@@ -586,6 +586,12 @@ class GmailManager:
             return 'UTC'
 
     def get_calendar_events(self, dates: list[str] | list[datetime]) -> list[CalendarEvent]:
+        """
+        Retrieves calendar events for the specified dates.
+
+        :param dates: List of dates for which to retrieve events. Can be strings in 'YYYY-MM-DD' format or datetime objects.
+        :return: List of CalendarEvent objects for the specified dates.
+        """
         try:
             creds = self._get_credentials()
             service = build("calendar", "v3", credentials=creds)
@@ -672,6 +678,89 @@ class GmailManager:
             self.logger.error(f"An error occurred while retrieving calendar items: {str(e)}")
             return []
 
+    def send_calendar_invitation(self,
+                                 title: str,
+                                 start_time: str | datetime,
+                                 end_time: str | datetime,
+                                 attendees: list[str],
+                                 organizer: str,
+                                 tz: str = "America/New_York"
+                                 ) -> bool:
+        """
+        Sends a calendar invitation to the specified attendees with the provided details. This function schedules
+        an event and sends an invitation to each attendee's email address.
+
+        Parameters:
+        title : str
+            The title of the calendar event.
+
+        start_time : str or datetime
+            The start time of the event, specified as a string or a datetime object.
+
+        end_time : str or datetime
+            The end time of the event, specified as a string or a datetime object.
+
+        attendees : list[str]
+            A list of email addresses of the attendees who will be invited.
+
+        organizer : str
+            The email address of the event organizer.
+
+        tz : str, optional
+            The timezone in which the event is scheduled, default is "America/New_York".
+
+        Returns:
+            True on success, False otherwise.
+
+        Raises:
+        ValueError
+            Raised if the start time is after the end time or if attendee list is empty.
+        """
+        if not attendees:
+            raise ValueError("Attendee list cannot be empty.")
+
+        # Convert strings to datetime if necessary
+        if isinstance(start_time, str):
+            start_time = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+        if isinstance(end_time, str):
+            end_time = datetime.fromisoformat(end_time.replace('Z', '+00:00'))
+
+        if start_time > end_time:
+            raise ValueError("Start time cannot be after end time.")
+
+        # Determine timezone handling
+        start_tz_info = {}
+        end_tz_info = {}
+
+        if start_time.tzinfo is None:
+            start_tz_info['timeZone'] = tz
+        
+        if end_time.tzinfo is None:
+            end_tz_info['timeZone'] = tz
+
+        event = {
+            'summary': title,
+            'organizer': {'email': organizer},
+            'start': {
+                'dateTime': start_time.isoformat(),
+                **start_tz_info
+            },
+            'end': {
+                'dateTime': end_time.isoformat(),
+                **end_tz_info
+            },
+            'attendees': [{'email': email} for email in attendees],
+        }
+
+        try:
+            creds = self._get_credentials()
+            service = build("calendar", "v3", credentials=creds)
+            service.events().insert(calendarId='primary', body=event, sendUpdates='all').execute()
+            return True
+        except Exception as e:
+            self.logger.error(f"An error occurred while sending calendar invitation: {str(e)}")
+            return False
+
     def get_calendar_tasks(self, dates: list[str] | list[datetime]) -> list[CalendarTask]:
         """
         Retrieves tasks from Google Calendar tasks that are due on the specified dates.
@@ -756,6 +845,23 @@ if __name__ == "__main__":
 
     manager = GmailManager()
 
+    start = datetime(
+        year=2026, month=4, day=21, hour=10, minute=0, second=0, microsecond=0
+    )
+    end = start + timedelta(minutes=30)
+
+    if (manager.send_calendar_invitation(
+            title="Test Event",
+            start_time=start,
+            end_time=end,
+            attendees=["drrandys@gmail.com", "randevilabq@outlook.com"],
+            organizer="drrandys@gmail.com",
+            tz="America/New_York"
+    )):
+        print("Calendar invitation sent successfully.")
+    else:
+        print("Failed to send calendar invitation.")
+
     # print(f"email address: {manager.get_email_address()}")
 
     # emails = manager.get_emails(recipient="me", max_age_minutes=180, filter_latest=False)
@@ -766,10 +872,10 @@ if __name__ == "__main__":
     # if manager.send_new_email(recipient="drrandys@yahoo.com", subject="Yet another test", body="Aren't you tired of these?", cc=["randevilabq@outlook.com"]):
     #     print("Email sent successfully")
 
-    calendar_events = manager.get_calendar_events(["2026-04-20", "2026-04-21", "2026-04-22"])
-
-    for event in calendar_events:
-        print(f"summary: {event.summary}, start: {event.start}, end: {event.end}, description: {event.description}")
+    # calendar_events = manager.get_calendar_events(["2026-04-20", "2026-04-21", "2026-04-22"])
+    #
+    # for event in calendar_events:
+    #     print(f"summary: {event.summary}, start: {event.start}, end: {event.end}, description: {event.description}")
 
     # calendar_tasks = manager.get_calendar_tasks(date_range("2026-04-20", "2026-04-27"))
     #
