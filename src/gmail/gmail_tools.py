@@ -1,10 +1,13 @@
 from typing import Optional, List
 
-from gmail_manager import GmailManager, Email
+from langchain.agents import create_agent
+from langchain_core.messages import HumanMessage
+
+from gmail_manager import GmailManager
 from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 logging.basicConfig(level=logging.INFO)
@@ -158,7 +161,7 @@ def all_day(start: datetime, end: datetime) -> bool:
     return (start.hour == 0 and start.minute == 0 and start.second == 0 and start.microsecond == 0 and
             end == start + timedelta(days=1))
 
-#@tool(args_schema=CheckCalendarInput)
+@tool(args_schema=CheckCalendarInput)
 def check_calendar_tool(dates: List[str]) -> str:
     """
     Check Google Calendar for events on specified dates.
@@ -278,7 +281,100 @@ def check_calendar_tool(dates: List[str]) -> str:
     except Exception as e:
         return f"Failed to check calendar: {str(e)}"
 
+
+class ScheduleMeetingInput(BaseModel):
+    """
+    Input schema for the schedule_meeting_tool.
+    """
+    attendees: List[str] = Field(
+        description="Email addresses of meeting attendees"
+    )
+    title: str = Field(
+        description="Meeting title/subject"
+    )
+    start_time: str = Field(
+        description="Meeting start time in ISO format (YYYY-MM-DDTHH:MM:SS)"
+    )
+    end_time: str = Field(
+        description="Meeting end time in ISO format (YYYY-MM-DDTHH:MM:SS)"
+    )
+    organizer_email: str = Field(
+        description="Email address of the meeting organizer"
+    )
+    timezone: str = Field(
+        default="America/Los_Angeles",
+        description="Timezone for the meeting"
+    )
+
+@tool(args_schema=ScheduleMeetingInput)
+def schedule_meeting_tool(
+        attendees: List[str],
+        title: str,
+        start_time: str,
+        end_time: str,
+        organizer_email: str,
+        timezone: str = None
+) -> str:
+    """
+    Schedule a meeting with Google Calendar and send invites.
+
+    Args:
+        attendees: Email addresses of meeting attendees
+        title: Meeting title/subject
+        start_time: Meeting start time in ISO format (YYYY-MM-DDTHH:MM:SS)
+        end_time: Meeting end time in ISO format (YYYY-MM-DDTHH:MM:SS)
+        organizer_email: Email address of the meeting organizer
+        timezone: Timezone for the meeting (default: America/Los_Angeles)
+
+    Returns:
+        Success or failure message
+    """
+    try:
+
+        if timezone is None:
+            timezone = GM.get_calendar_timezone()
+
+        success = GM.send_calendar_invitation(
+            title=title,
+            start_time=start_time,
+            end_time=end_time,
+            attendees=attendees,
+            organizer=organizer_email,
+            tz=timezone
+        )
+
+        if success:
+            return f"Meeting '{title}' scheduled successfully from {start_time} to {end_time} with {len(attendees)} attendees"
+        else:
+            return "Failed to schedule meeting"
+    except Exception as e:
+        return f"Error scheduling meeting: {str(e)}"
+
 if __name__ == "__main__":
-    #print(reply_email_tool(email_id="19d978bc63c7e61c", response_text="Hello, this is a test reply", additional_recipients=["randevilabq@outlook.com"]))
-    #print(send_new_email_tool(recipient="drrandys@yahoo.com", subject="Testing the send email tool again", body_text="Hello, this is a test email", additional_recipients=["randevilabq@outlook.com"]))
-    print(check_calendar_tool(dates=["2026-04-20", "2026-04-21", "2026-04-22", "2026-04-23", "2026-04-24"]))
+
+    from dotenv import load_dotenv
+    load_dotenv()
+
+    from langchain.chat_models import init_chat_model
+    import os
+
+    model = f"ollama:{os.getenv('OLLAMA_MODEL')}"
+    llm = init_chat_model(model, base_url=os.getenv('OLLAMA_BASE_URL'))
+
+    agent = create_agent(
+        model=llm,
+        tools=[fetch_emails_tool, reply_email_tool, send_new_email_tool, check_calendar_tool, schedule_meeting_tool],
+        system_prompt=(
+            "You are a helpful assistant that helps users manage their Gmail "
+            "account. You can fetch emails, reply to emails, send new emails, "
+            "check calendar availability, and schedule meetings."
+        )
+    )
+
+    message = HumanMessage(content=f"Fetch my emails from the past 240 minutes. My email address is {os.getenv('EMAIL_ADDRESS')}")
+
+    response = agent.invoke({
+        "messages": [message]
+    })
+
+    print(response["messages"][-1].content)
