@@ -20,7 +20,7 @@ class FetchEmailsInput(BaseModel):
         description="Only retrieve emails no older than this many minutes."
     )
 
-# @tool(args_schema=FetchEmailsInput)
+@tool(args_schema=FetchEmailsInput)
 def fetch_emails_tool(email_address: str, minutes_since: int = 30) -> str:
     """
     Fetches recent emails from Gmail for the specified email address.
@@ -54,25 +54,22 @@ def fetch_emails_tool(email_address: str, minutes_since: int = 30) -> str:
 
     return result
 
-class SendEmailInput(BaseModel):
+class ReplyEmailInput(BaseModel):
     """
-    Input schema for the send_email_tool.
+    Input schema for the reply_email_tool.
     """
     email_id: str = Field(
-        description="Gmail message ID to reply to. This must be a valid Gmail message ID obtained from the fetch_emails_tool. If you're creating a new email (not replying), you can use any string like 'NEW_EMAIL'."
+        description="Gmail message ID to reply to. This must be a valid Gmail message ID obtained from the fetch_emails_tool."
     )
     response_text: str = Field(
         description="Content of the reply"
-    )
-    email_address: str = Field(
-        description="Current user's email address"
     )
     additional_recipients: Optional[List[str]] = Field(
         default=None,
         description="Optional additional recipients to include"
     )
 
-# @tool(args_schema=SendEmailInput)
+@tool(args_schema=ReplyEmailInput)
 def reply_email_tool(
         email_id: str,
         response_text: str,
@@ -98,6 +95,25 @@ def reply_email_tool(
     except Exception as e:
         return f"Failed to send email: {str(e)}"
 
+class SendNewEmailInput(BaseModel):
+    """
+    Input schema for the reply_email_tool.
+    """
+    recipient: str = Field(
+        description="Email address of the intended recipient"
+    )
+    subject: str = Field(
+        description="Subject of the email"
+    )
+    body_text: str = Field(
+        description="The main content of the email"
+    )
+    additional_recipients: Optional[List[str]] = Field(
+        default=None,
+        description="Optional additional recipients to cc the email to"
+    )
+
+@tool(args_schema=SendNewEmailInput)
 def send_new_email_tool(
         recipient: str,
         subject: str,
