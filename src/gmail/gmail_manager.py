@@ -7,7 +7,8 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from email.utils import parsedate_to_datetime
 import base64
 from email.mime.text import MIMEText
@@ -568,13 +569,42 @@ class GmailManager:
             self.logger.error(f"An error occurred while sending email: {str(e)}")
             return False
 
+    def get_calendar_timezone(self) -> str:
+        """
+        Retrieves the primary calendar's timezone.
+        
+        :return: The IANA timezone string (e.g., 'America/New_York').
+            Defaults to 'UTC' if an error occurs.
+        """
+        try:
+            creds = self._get_credentials()
+            service = build("calendar", "v3", credentials=creds)
+            calendar = service.calendars().get(calendarId='primary').execute()
+            return calendar.get('timeZone', 'UTC')
+        except Exception as e:
+            self.logger.error(f"Error fetching calendar timezone: {str(e)}")
+            return 'UTC'
+
     def get_calendar_events(self, dates: list[str] | list[datetime]) -> list[CalendarEvent]:
         try:
             creds = self._get_credentials()
             service = build("calendar", "v3", credentials=creds)
             
-            all_events = []
+            # Get the calendar's timezone for all-day events
+            calendar_tz_str = self.get_calendar_timezone()
+            calendar_tz = ZoneInfo(calendar_tz_str)
             
+            all_events = []
+            seen_event_ids = set()
+            
+            # Prepare requested dates for comparison
+            requested_dates = []
+            for date_item in dates:
+                if isinstance(date_item, str):
+                    requested_dates.append(datetime.strptime(date_item, "%Y-%m-%d").date())
+                else:
+                    requested_dates.append(date_item.date())
+
             for date_item in dates:
                 if isinstance(date_item, str):
                     dt = datetime.strptime(date_item, "%Y-%m-%d")
@@ -596,6 +626,10 @@ class GmailManager:
                 events = events_result.get('items', [])
                 
                 for event in events:
+                    event_id = event.get('id')
+                    if event_id in seen_event_ids:
+                        continue
+                    
                     # Google Calendar API returns 'dateTime' for events with time and 'date' for all-day events
                     start_info = event['start'].get('dateTime', event['start'].get('date'))
                     end_info = event['end'].get('dateTime', event['end'].get('date'))
@@ -605,21 +639,32 @@ class GmailManager:
                     if 'T' in start_info:
                         start_dt = datetime.fromisoformat(start_info.replace('Z', '+00:00'))
                     else:
-                        start_dt = datetime.strptime(start_info, "%Y-%m-%d")
+                        # All-day events are naive in the calendar's timezone
+                        start_dt = datetime.strptime(start_info, "%Y-%m-%d").replace(tzinfo=calendar_tz)
                         
                     if 'T' in end_info:
                         end_dt = datetime.fromisoformat(end_info.replace('Z', '+00:00'))
                     else:
-                        end_dt = datetime.strptime(end_info, "%Y-%m-%d")
+                        # All-day events are naive in the calendar's timezone
+                        end_dt = datetime.strptime(end_info, "%Y-%m-%d").replace(tzinfo=calendar_tz)
+
+                    # Omit events where the end time is at the very beginning of one of the dates 
+                    # but the start time is not in one of the dates.
+                    # This typically happens when an event ends exactly at 00:00:00 of a day.
+                    if end_dt.time() == datetime.min.time() and end_dt.date() in requested_dates:
+                        if start_dt.date() not in requested_dates:
+                            continue
 
                     all_events.append(CalendarEvent(
-                        id=event.get('id'),
+                        id=event_id,
                         summary=event.get('summary', 'No Summary'),
                         start=start_dt,
                         end=end_dt,
                         description=event.get('description'),
                         location=event.get('location')
                     ))
+                    if event_id:
+                        seen_event_ids.add(event_id)
             
             return all_events
             
@@ -711,7 +756,7 @@ if __name__ == "__main__":
 
     manager = GmailManager()
 
-    print(f"email address: {manager.get_email_address()}")
+    # print(f"email address: {manager.get_email_address()}")
 
     # emails = manager.get_emails(recipient="me", max_age_minutes=180, filter_latest=False)
     #
@@ -721,10 +766,10 @@ if __name__ == "__main__":
     # if manager.send_new_email(recipient="drrandys@yahoo.com", subject="Yet another test", body="Aren't you tired of these?", cc=["randevilabq@outlook.com"]):
     #     print("Email sent successfully")
 
-    # calendar_events = manager.get_calendar_events(date_range("2026-04-20", "2026-04-27"))
-    #
-    # for event in calendar_events:
-    #     print(event)
+    calendar_events = manager.get_calendar_events(["2026-04-20", "2026-04-21", "2026-04-22"])
+
+    for event in calendar_events:
+        print(f"summary: {event.summary}, start: {event.start}, end: {event.end}, description: {event.description}")
 
     # calendar_tasks = manager.get_calendar_tasks(date_range("2026-04-20", "2026-04-27"))
     #
