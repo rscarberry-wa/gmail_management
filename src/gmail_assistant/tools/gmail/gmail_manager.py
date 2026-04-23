@@ -852,6 +852,97 @@ class GmailManager:
             self.logger.error(f"An error occurred while retrieving calendar tasks: {str(e)}")
             return []
 
+    def add_calendar_task(self, calendar_task: CalendarTask) -> bool:
+        """
+        Adds a new task to the user's default Google Tasks list.
+
+        :param calendar_task: A `CalendarTask` object containing the task details.
+        :type calendar_task: CalendarTask
+        :return: True if the task was added successfully, False otherwise.
+        :rtype: bool
+        """
+        try:
+            creds = self._get_credentials()
+            service = build("tasks", "v1", credentials=creds)
+
+            task_body = {
+                'title': calendar_task.title,
+                'notes': calendar_task.notes,
+                'status': calendar_task.status or 'needsAction'
+            }
+
+            if calendar_task.due:
+                # Google Tasks API expects RFC 3339 timestamp (e.g. 2026-04-20T00:00:00.000Z)
+                # Ensure the datetime is UTC and formatted correctly
+                due_utc = calendar_task.due
+                if due_utc.tzinfo is None:
+                    due_utc = due_utc.replace(tzinfo=timezone.utc)
+                else:
+                    due_utc = due_utc.astimezone(timezone.utc)
+                
+                # Format as RFC 3339 with 'Z' suffix and milliseconds if needed, 
+                # but 'Z' is mandatory and isoformat() only adds offset if present.
+                task_body['due'] = due_utc.isoformat().replace('+00:00', 'Z')
+
+            service.tasks().insert(tasklist='@default', body=task_body).execute()
+            return True
+
+        except Exception as e:
+            self.logger.error(f"An error occurred while adding calendar task: {str(e)}")
+            return False
+
+    def update_calendar_task(self, task_id: str, status: str = 'completed') -> bool:
+        """
+        Updates the status of a calendar task.
+
+        :param task_id: The ID of the task to update.
+        :param status: The new status for the task (e.g., 'completed' or 'needsAction').
+        :return: True if the update was successful, False otherwise.
+        """
+        try:
+            creds = self._get_credentials()
+            service = build("tasks", "v1", credentials=creds)
+
+            # First, retrieve the task to get its current state
+            task = service.tasks().get(tasklist='@default', task=task_id).execute()
+            
+            # Update the status
+            task['status'] = status
+            
+            # If marking as completed, Google Tasks API might need 'completed' timestamp, 
+            # but setting 'status' to 'completed' is usually enough for the API to auto-fill it.
+            # However, if we want to be explicit:
+            if status == 'completed':
+                task['completed'] = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+            else:
+                task['completed'] = None
+
+            service.tasks().update(tasklist='@default', task=task_id, body=task).execute()
+            return True
+
+        except Exception as e:
+            self.logger.error(f"An error occurred while updating calendar task: {str(e)}")
+            return False
+
+    def delete_calendar_task(self, task_id: str) -> bool:
+        """
+        Deletes a calendar task.
+
+        :param task_id: The ID of the task to delete.
+        :return: True if the deletion was successful, False otherwise.
+        """
+        try:
+            creds = self._get_credentials()
+            service = build("tasks", "v1", credentials=creds)
+
+            service.tasks().delete(tasklist='@default', task=task_id).execute()
+            return True
+
+        except Exception as e:
+            self.logger.error(f"An error occurred while deleting calendar task: {str(e)}")
+            return False
+
+
 
 def date_range(start: str, end: str) -> list[datetime]:
     start_date = datetime.strptime(start, "%Y-%m-%d")
