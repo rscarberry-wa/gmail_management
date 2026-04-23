@@ -375,7 +375,7 @@ class GmailManager:
         """
         try:
             creds = self._get_credentials()
-            service = build("gmail", "v1", credentials=creds)
+            service = build("gmail_assistant", "v1", credentials=creds)
 
             # Retrieve the message
             msg = service.users().messages().get(userId='me', id=email_id).execute()
@@ -439,7 +439,7 @@ class GmailManager:
             bcc = bcc or []
 
             creds = self._get_credentials()
-            service = build("gmail", "v1", credentials=creds)
+            service = build("gmail_assistant", "v1", credentials=creds)
 
             if attachments:
                 message = MIMEMultipart()
@@ -526,7 +526,7 @@ class GmailManager:
             bcc = bcc or []
             
             creds = self._get_credentials()
-            service = build("gmail", "v1", credentials=creds)
+            service = build("gmail_assistant", "v1", credentials=creds)
 
             if attachments:
                 message = MIMEMultipart()
@@ -569,6 +569,23 @@ class GmailManager:
             self.logger.error(f"An error occurred while sending email: {str(e)}")
             return False
 
+    def delete_email(self, email_id: str) -> bool:
+        """
+        Trashes an email message by its ID.
+
+        :param email_id: The ID of the email to delete.
+        :return: True if the email was successfully trashed, False otherwise.
+        """
+        try:
+            creds = self._get_credentials()
+            service = build("gmail", "v1", credentials=creds)
+            service.users().messages().trash(userId='me', id=email_id).execute()
+            self.logger.info(f"Email with ID {email_id} moved to trash.")
+            return True
+        except Exception as e:
+            self.logger.error(f"An error occurred while deleting email {email_id}: {str(e)}")
+            return False
+    
     def get_calendar_timezone(self) -> str:
         """
         Retrieves the primary calendar's timezone.
@@ -854,8 +871,8 @@ if __name__ == "__main__":
             title="Test Event",
             start_time=start,
             end_time=end,
-            attendees=["drrandys@gmail.com", "randevilabq@outlook.com"],
-            organizer="drrandys@gmail.com",
+            attendees=["drrandys@gmail_assistant.com", "randevilabq@outlook.com"],
+            organizer="drrandys@gmail_assistant.com",
             tz="America/New_York"
     )):
         print("Calendar invitation sent successfully.")

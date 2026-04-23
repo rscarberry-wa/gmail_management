@@ -2,12 +2,13 @@
 import unittest
 from unittest.mock import MagicMock, patch
 from datetime import datetime, timedelta
-from src.gmail.gmail_manager import GmailManager, Email
+from src.gmail_assistant.tools.gmail.gmail_manager import GmailManager
+
 
 class TestGmailManagerReproduction(unittest.TestCase):
 
-    @patch('src.gmail.gmail_manager.build')
-    @patch('src.gmail.gmail_manager.Credentials')
+    @patch('src.gmail_assistant.gmail_manager.build')
+    @patch('src.gmail_assistant.gmail_manager.Credentials')
     def test_get_emails_replied_to_missing(self, mock_creds, mock_build):
         # Setup mock service
         mock_service = MagicMock()

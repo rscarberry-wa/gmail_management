@@ -1,5 +1,7 @@
-from typing import Optional, List
+from dotenv import load_dotenv
+load_dotenv()
 
+from typing import Optional, List
 from langchain.agents import create_agent
 from langchain_core.messages import HumanMessage
 
@@ -145,6 +147,34 @@ def send_new_email_tool(
             return "Failed to send email due to an API error"
     except Exception as e:
         return f"Failed to send email: {str(e)}"
+
+class DeleteEmailInput(BaseModel):
+    """
+    Input schema for the delete_email_tool.
+    """
+    email_id: str = Field(
+        description="ID of the email to delete"
+    )
+
+@tool(args_schema=DeleteEmailInput)
+def delete_email_tool(email_id: str) -> str:
+    """
+    Delete an email from Gmail.
+
+    Args:
+        email_id: ID of the email to delete
+
+    Returns:
+         Confirmation message
+    """
+    try:
+        success = GM.delete_email(email_id)
+        if success:
+            return f"Email with ID {email_id} deleted successfully"
+        else:
+            return f"Failed to delete email with ID {email_id} due to an API error"
+    except Exception as e:
+        return f"Failed to delete email with ID {email_id} because of exception: {str(e)}"
 
 class CheckCalendarInput(BaseModel):
     """
@@ -352,9 +382,6 @@ def schedule_meeting_tool(
 
 if __name__ == "__main__":
 
-    from dotenv import load_dotenv
-    load_dotenv()
-
     from langchain.chat_models import init_chat_model
     import os
 
@@ -363,7 +390,7 @@ if __name__ == "__main__":
 
     agent = create_agent(
         model=llm,
-        tools=[fetch_emails_tool, reply_email_tool, send_new_email_tool, check_calendar_tool, schedule_meeting_tool],
+        tools=[fetch_emails_tool, reply_email_tool, send_new_email_tool, delete_email_tool, check_calendar_tool, schedule_meeting_tool],
         system_prompt=(
             "You are a helpful assistant that helps users manage their Gmail "
             "account. You can fetch emails, reply to emails, send new emails, "
@@ -372,6 +399,7 @@ if __name__ == "__main__":
     )
 
     message = HumanMessage(content=f"Fetch my emails from the past 240 minutes. My email address is {os.getenv('EMAIL_ADDRESS')}")
+    # message = HumanMessage(content=f"Delete my email with ID 19dbb1abaf99a607. My email address is {os.getenv('EMAIL_ADDRESS')}")
 
     response = agent.invoke({
         "messages": [message]

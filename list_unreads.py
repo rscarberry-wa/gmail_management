@@ -91,7 +91,7 @@ if __name__ == "__main__":
     creds = get_credentials()
     try:
         # Call the Gmail API
-        service = build("gmail", "v1", credentials=creds)
+        service = build("gmail_assistant", "v1", credentials=creds)
         # List unread emails, paging 10 at a time.
         list_unread_emails(service)
     except HttpError as error:
